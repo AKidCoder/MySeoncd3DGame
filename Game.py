@@ -25,17 +25,17 @@ screen_shake = 0.0
 player_shards = 15
 
 SKINS = [
-    {"name": "Cyber Cyan", "color": CYAN, "cost": 0, "owned": True, "tag": "STEALTH"},
-    {"name": "Inferno Red", "color": NEON_RED, "cost": 6, "owned": False, "tag": "RAMMER"},
-    {"name": "Void Purple", "color": PURPLE, "cost": 10, "owned": False, "tag": "DRIFT"},
-    {"name": "Pure Gold", "color": GOLD, "cost": 16, "owned": False, "tag": "LEGEND"},
+    {"name": "Cyber Cyan", "color": CYAN, "cost": 0, "owned": True},
+    {"name": "Inferno Red", "color": NEON_RED, "cost": 6, "owned": False},
+    {"name": "Void Purple", "color": PURPLE, "cost": 10, "owned": False},
+    {"name": "Pure Gold", "color": GOLD, "cost": 16, "owned": False},
 ]
 equipped_skin_idx = 0
 
 ABILITIES = [
-    {"name": "Standard Engine", "cost": 0, "owned": True, "badge": "STD", "desc": "Clean, instant response"},
+    {"name": "Standard Engine", "cost": 0, "owned": True, "badge": "STD", "desc": "Clean, reliable handling"},
     {"name": "Nitro Dash", "cost": 8, "owned": False, "badge": "BOOST", "desc": "Rocket forward surge"},
-    {"name": "Shockwave", "cost": 12, "owned": False, "badge": "BURST", "desc": "Repels surrounding foes"},
+    {"name": "Shockwave", "cost": 12, "owned": False, "badge": "BURST", "desc": "Light stun & defensive disrupt"},
     {"name": "Titan Heavy", "cost": 15, "owned": False, "badge": "ARMOR", "desc": "2.5x mass bonus for 3s"},
 ]
 equipped_ability_idx = 0
@@ -62,7 +62,7 @@ class BumperCar:
         self.color = color
         self.is_player = is_player
         self.radius = 1.3
-        self.base_mass = 1.55 if is_player else 1.0
+        self.base_mass = 1.45 if is_player else 1.0
         self.mass = self.base_mass
         self.is_alive = True
         self.fall_speed = 0.0
@@ -83,28 +83,28 @@ class BumperCar:
             self.ability_cooldown = 3.5
             fwd_x = math.cos(self.angle)
             fwd_z = math.sin(self.angle)
-            self.vx = fwd_x * 75.0
-            self.vz = fwd_z * 75.0
+            self.vx += fwd_x * 85.0
+            self.vz += fwd_z * 85.0
             if self.is_player:
-                screen_shake = 0.45
+                screen_shake = 0.55
 
         elif self.ability == "Shockwave":
             self.ability_cooldown = 5.0
-            self.shockwave_timer = 0.35
+            self.shockwave_timer = 0.30
             if self.is_player:
-                screen_shake = 0.55
+                screen_shake = 0.70
             for other in other_cars:
                 if other is not self and other.is_alive:
                     dx = other.x - self.x
                     dz = other.z - self.z
                     dist = math.hypot(dx, dz)
-                    if 0.1 < dist < 11.0:
+                    if 0.1 < dist < 7.5:
                         nx = dx / dist
                         nz = dz / dist
-                        push = (11.0 - dist) * 9.5
+                        push = (7.5 - dist) * 2.8
                         other.vx += nx * push
                         other.vz += nz * push
-                        other.stun_timer = 0.5
+                        other.stun_timer = 0.40
 
         elif self.ability == "Titan Heavy":
             self.ability_cooldown = 7.0
@@ -123,8 +123,8 @@ class BumperCar:
             self.vx *= 0.95
             self.vz *= 0.95
         elif not is_driving:
-            self.vx *= 0.80
-            self.vz *= 0.80
+            self.vx *= 0.85
+            self.vz *= 0.85
 
         if self.ability_cooldown > 0.0:
             self.ability_cooldown -= dt
@@ -163,11 +163,11 @@ class BumperCar:
         pr.draw_sphere(pr.Vector3(nose_x, self.y + 0.1, nose_z), 0.3, GOLD)
 
         if self.shockwave_timer > 0.0:
-            ring_rad = (0.35 - self.shockwave_timer) * 30.0
+            ring_rad = (0.30 - self.shockwave_timer) * 25.0
             pr.draw_circle_3d(pr.Vector3(self.x, 0.2, self.z), ring_rad, pr.Vector3(1, 0, 0), 90.0, CYAN)
 
 # -------------------------------------------------------------
-# COLLISION LOGIC
+# COLLISION LOGIC (BASE=2.0, MULTIPLIER=1.0)
 # -------------------------------------------------------------
 def resolve_car_collision(c1, c2):
     global screen_shake
@@ -189,27 +189,78 @@ def resolve_car_collision(c1, c2):
         c2.x += nx * overlap
         c2.z += nz * overlap
 
-        v1_norm = c1.vx * nx + c1.vz * nz
-        v2_norm = c2.vx * nx + c2.vz * nz
-        rel_impact = v1_norm - v2_norm
+        rel_v = (c1.vx - c2.vx) * nx + (c1.vz - c2.vz) * nz
 
-        if rel_impact > 0:
-            BASE_FORCE = 38.0
-            impact_force = (rel_impact * 2.8) + BASE_FORCE
+        BASE_FORCE = 2.0
+        SPEED_MULT = 1.0
 
-            c1.vx -= nx * (impact_force * (c2.mass / (c1.mass + c2.mass))) * 0.25
-            c1.vz -= nz * (impact_force * (c2.mass / (c1.mass + c2.mass))) * 0.25
+        if abs(rel_v) > 0.01:
+            total_force = (abs(rel_v) * SPEED_MULT) + BASE_FORCE
 
-            c2.vx += nx * (impact_force * (c1.mass / (c1.mass + c2.mass))) * 1.95
-            c2.vz += nz * (impact_force * (c1.mass / (c1.mass + c2.mass))) * 1.95
+            if rel_v > 0:
+                attacker, victim = c1, c2
+                dir_sign = 1.0
+            else:
+                attacker, victim = c2, c1
+                dir_sign = -1.0
 
-            c2.stun_timer = 0.40
+            mass_ratio_victim = attacker.mass / (attacker.mass + victim.mass)
+            victim.vx += (nx * dir_sign) * (total_force * mass_ratio_victim) * 3.5
+            victim.vz += (nz * dir_sign) * (total_force * mass_ratio_victim) * 3.5
+            victim.stun_timer = 0.45
 
-            if c1.is_player and not c2.is_player:
-                c2.last_hit_by_player = True
+            recoil_factor = min(0.12, 0.08 * (victim.mass / (attacker.mass + victim.mass)))
+            attacker.vx -= (nx * dir_sign) * (total_force * recoil_factor)
+            attacker.vz -= (nz * dir_sign) * (total_force * recoil_factor)
 
+            if attacker.is_player and not victim.is_player:
+                victim.last_hit_by_player = True
+
+            # Robust screen shake impulse on impact
             if c1.is_player or c2.is_player:
-                screen_shake = min(0.75, screen_shake + 0.4)
+                screen_shake = min(0.85, screen_shake + 0.45)
+
+# -------------------------------------------------------------
+# SPEEDOMETER HUD DRAWING FUNCTION
+# -------------------------------------------------------------
+def draw_speedometer(cx, cy, radius, current_speed, max_displayed_speed=50.0):
+    pr.draw_circle(cx, cy, radius + 4, pr.Color(16, 20, 32, 230))
+    pr.draw_circle(cx, cy, radius, pr.Color(26, 32, 48, 255))
+    pr.draw_circle_lines(cx, cy, radius, pr.Color(60, 75, 110, 255))
+
+    num_ticks = 9
+    start_deg = 135.0
+    end_deg = 405.0
+    for i in range(num_ticks):
+        fraction = i / (num_ticks - 1)
+        tick_angle = math.radians(start_deg + fraction * (end_deg - start_deg))
+        t_cos = math.cos(tick_angle)
+        t_sin = math.sin(tick_angle)
+        p_inner = pr.Vector2(cx + t_cos * (radius - 10), cy + t_sin * (radius - 10))
+        p_outer = pr.Vector2(cx + t_cos * (radius - 3), cy + t_sin * (radius - 3))
+        tick_color = NEON_RED if fraction >= 0.75 else (GOLD if fraction >= 0.45 else CYAN)
+        pr.draw_line_ex(p_inner, p_outer, 2.0, tick_color)
+
+    speed_ratio = max(0.0, min(1.0, current_speed / max_displayed_speed))
+    needle_deg = start_deg + speed_ratio * (end_deg - start_deg)
+    needle_rad = math.radians(needle_deg)
+
+    needle_len = radius - 8
+    tip_x = cx + math.cos(needle_rad) * needle_len
+    tip_y = cy + math.sin(needle_rad) * needle_len
+
+    needle_color = NEON_RED if speed_ratio > 0.75 else (GOLD if speed_ratio > 0.45 else CYAN)
+    pr.draw_line_ex(pr.Vector2(cx, cy), pr.Vector2(tip_x, tip_y), 3.0, needle_color)
+
+    pr.draw_circle(cx, cy, 7, pr.Color(12, 14, 22, 255))
+    pr.draw_circle(cx, cy, 4, needle_color)
+
+    speed_val_str = f"{int(round(current_speed))}"
+    unit_str = "VEL"
+    val_w = pr.measure_text(speed_val_str, 16)
+    pr.draw_text(speed_val_str, cx - val_w // 2, cy + 18, 16, pr.WHITE)
+    unit_w = pr.measure_text(unit_str, 10)
+    pr.draw_text(unit_str, cx - unit_w // 2, cy + 34, 10, pr.GRAY)
 
 # -------------------------------------------------------------
 # MATCH CONTROLLER
@@ -256,8 +307,8 @@ camera = pr.Camera3D(
 )
 
 shop_camera = pr.Camera3D(
-    pr.Vector3(3.2, 2.8, 3.4),
-    pr.Vector3(0.0, 0.5, 0.0),
+    pr.Vector3(4.5, 3.8, 4.8),
+    pr.Vector3(0.0, 0.2, 0.0),
     pr.Vector3(0.0, 1.0, 0.0),
     45.0,
     pr.CAMERA_PERSPECTIVE
@@ -269,7 +320,7 @@ shop_camera = pr.Camera3D(
 while not pr.window_should_close():
     dt = pr.get_frame_time()
 
-    # ======================== MINIMAL CLEAN HOME ========================
+    # ======================== TITLE SCREEN ========================
     if game_state == "TITLE":
         if pr.is_key_pressed(pr.KEY_ENTER) or pr.is_key_pressed(pr.KEY_SPACE):
             start_new_match()
@@ -279,23 +330,19 @@ while not pr.window_should_close():
         pr.begin_drawing()
         pr.clear_background(pr.Color(12, 14, 22, 255))
 
-        # Hero Header
         pr.draw_text("ROOF RUMBLE", SCREEN_WIDTH // 2 - pr.measure_text("ROOF RUMBLE", 48) // 2, 160, 48, CYAN)
         pr.draw_text("3D BUMPER ARENA", SCREEN_WIDTH // 2 - pr.measure_text("3D BUMPER ARENA", 16) // 2, 218, 16, pr.GRAY)
 
-        # Currency Pill
         shard_badge = f"{player_shards} SHARDS"
         b_w = pr.measure_text(shard_badge, 18) + 40
         pr.draw_rectangle_rounded(pr.Rectangle(SCREEN_WIDTH // 2 - b_w // 2, 255, b_w, 32), 0.5, 4, pr.Color(22, 26, 40, 255))
         pr.draw_circle(SCREEN_WIDTH // 2 - b_w // 2 + 16, 271, 5, GOLD)
         pr.draw_text(shard_badge, SCREEN_WIDTH // 2 - b_w // 2 + 28, 263, 18, GOLD)
 
-        # Main Actions
         btn_w, btn_h = 260, 48
         pr.draw_rectangle_rounded(pr.Rectangle(SCREEN_WIDTH // 2 - btn_w // 2, 330, btn_w, btn_h), 0.25, 4, CYAN)
         pr.draw_text("PLAY  [ENTER]", SCREEN_WIDTH // 2 - pr.measure_text("PLAY  [ENTER]", 18) // 2, 345, 18, pr.BLACK)
 
-        # Fixed: exactly 4 arguments
         pr.draw_rectangle_rounded_lines(pr.Rectangle(SCREEN_WIDTH // 2 - btn_w // 2, 395, btn_w, btn_h), 0.25, 4, pr.WHITE)
         pr.draw_text("GARAGE & SHOP  [S]", SCREEN_WIDTH // 2 - pr.measure_text("GARAGE & SHOP  [S]", 16) // 2, 411, 16, pr.WHITE)
 
@@ -303,7 +350,7 @@ while not pr.window_should_close():
         pr.end_drawing()
         continue
 
-    # ======================== VISUAL SHOP / GARAGE ========================
+    # ======================== SHOP SCREEN ========================
     elif game_state == "SHOP":
         if pr.is_key_pressed(pr.KEY_ESCAPE) or pr.is_key_pressed(pr.KEY_B):
             game_state = "TITLE"
@@ -336,83 +383,72 @@ while not pr.window_should_close():
         pr.begin_drawing()
         pr.clear_background(pr.Color(16, 18, 28, 255))
 
-        # Header
         pr.draw_text("THE GARAGE", 50, 30, 26, pr.WHITE)
         pr.draw_text(f"SHARDS: {player_shards}", SCREEN_WIDTH - 220, 35, 20, GOLD)
 
-        # Tab Toggle
         tab_skin_col = CYAN if selected_tab == "SKINS" else pr.GRAY
         tab_ab_col = CYAN if selected_tab == "ABILITIES" else pr.GRAY
         pr.draw_text("[TAB] CHASSIS SKINS", 50, 75, 16, tab_skin_col)
         pr.draw_text("ABILITIES", 260, 75, 16, tab_ab_col)
 
-        # Item List with Rendered Visual Sprite Icons
         for i, itm in enumerate(active_list):
-            y_pos = 115 + i * 85
+            y_pos = 110 + i * 75
             is_cur = (i == shop_cursor)
             is_eq = (equipped_skin_idx == i if selected_tab == "SKINS" else equipped_ability_idx == i)
 
             card_col = pr.Color(32, 40, 60, 255) if is_cur else pr.Color(22, 25, 38, 255)
-            pr.draw_rectangle_rounded(pr.Rectangle(50, y_pos, 440, 74), 0.2, 4, card_col)
+            pr.draw_rectangle_rounded(pr.Rectangle(50, y_pos, 460, 65), 0.2, 4, card_col)
+            
             if is_cur:
-                # Fixed: exactly 4 arguments
-                pr.draw_rectangle_rounded_lines(pr.Rectangle(50, y_pos, 440, 74), 0.2, 4, CYAN)
+                pr.draw_rectangle_rounded_lines(pr.Rectangle(50, y_pos, 460, 65), 0.2, 4, CYAN)
 
-            # Icon Box Picture (Pixel Art Rendering)
-            pic_rect = pr.Rectangle(62, y_pos + 10, 54, 54)
+            pic_rect = pr.Rectangle(60, y_pos + 12, 40, 40)
             pr.draw_rectangle_rounded(pic_rect, 0.2, 4, pr.Color(12, 14, 20, 255))
-            # Fixed: exactly 4 arguments
-            pr.draw_rectangle_rounded_lines(pic_rect, 0.2, 4, pr.Color(40, 48, 70, 255))
+            pr.draw_rectangle_rounded_lines(pic_rect, 0.2, 4, pr.Color(45, 55, 75, 255))
             
             if selected_tab == "SKINS":
                 car_col = itm["color"]
-                pr.draw_rectangle(70, y_pos + 28, 38, 18, car_col)
-                pr.draw_rectangle(76, y_pos + 20, 24, 10, pr.SKYBLUE)
-                pr.draw_rectangle_lines(76, y_pos + 20, 24, 10, pr.WHITE)
-                pr.draw_rectangle(68, y_pos + 42, 10, 5, pr.BLACK)
-                pr.draw_rectangle(98, y_pos + 42, 10, 5, pr.BLACK)
-                pr.draw_rectangle(70, y_pos + 43, 6, 3, pr.GRAY)
-                pr.draw_rectangle(100, y_pos + 43, 6, 3, pr.GRAY)
-                pr.draw_circle(107, y_pos + 36, 4, GOLD)
+                pr.draw_rectangle(66, y_pos + 26, 28, 14, car_col)
+                pr.draw_rectangle(71, y_pos + 20, 18, 8, pr.SKYBLUE)
+                pr.draw_rectangle_lines(71, y_pos + 20, 18, 8, pr.WHITE)
+                pr.draw_rectangle(64, y_pos + 38, 8, 4, pr.BLACK)
+                pr.draw_rectangle(88, y_pos + 38, 8, 4, pr.BLACK)
+                pr.draw_circle(94, y_pos + 33, 2, GOLD)
             else:
-                # Fixed: exactly 4 arguments
                 pr.draw_rectangle_rounded_lines(pic_rect, 0.2, 4, GOLD)
                 if itm["badge"] == "BOOST":
-                    pr.draw_triangle(pr.Vector2(72, y_pos + 22), pr.Vector2(72, y_pos + 50), pr.Vector2(92, y_pos + 36), GOLD)
-                    pr.draw_triangle(pr.Vector2(84, y_pos + 22), pr.Vector2(84, y_pos + 50), pr.Vector2(104, y_pos + 36), CYAN)
+                    pr.draw_triangle(pr.Vector2(68, y_pos + 22), pr.Vector2(68, y_pos + 42), pr.Vector2(82, y_pos + 32), GOLD)
+                    pr.draw_triangle(pr.Vector2(76, y_pos + 22), pr.Vector2(76, y_pos + 42), pr.Vector2(90, y_pos + 32), CYAN)
                 elif itm["badge"] == "BURST":
-                    pr.draw_circle_lines(89, y_pos + 37, 7, CYAN)
-                    pr.draw_circle_lines(89, y_pos + 37, 14, CYAN)
-                    pr.draw_circle_lines(89, y_pos + 37, 21, GOLD)
+                    pr.draw_circle_lines(80, y_pos + 32, 6, CYAN)
+                    pr.draw_circle_lines(80, y_pos + 32, 12, GOLD)
                 elif itm["badge"] == "ARMOR":
-                    pr.draw_rectangle_lines(74, y_pos + 22, 30, 30, pr.WHITE)
-                    pr.draw_rectangle(79, y_pos + 27, 20, 20, pr.GRAY)
-                    pr.draw_rectangle_lines(82, y_pos + 30, 14, 14, GOLD)
+                    pr.draw_rectangle_lines(68, y_pos + 20, 24, 24, pr.WHITE)
+                    pr.draw_rectangle(72, y_pos + 24, 16, 16, pr.GRAY)
                 else:
-                    pr.draw_line_ex(pr.Vector2(70, y_pos + 37), pr.Vector2(108, y_pos + 37), 3, pr.GRAY)
+                    pr.draw_line_ex(pr.Vector2(66, y_pos + 32), pr.Vector2(94, y_pos + 32), 2, pr.GRAY)
 
-            pr.draw_text(itm["name"], 130, y_pos + 15, 18, pr.WHITE)
-            desc_str = itm.get("desc", "Chassis upgrade")
-            pr.draw_text(desc_str, 130, y_pos + 42, 13, pr.LIGHTGRAY)
+            pr.draw_text(itm["name"], 115, y_pos + 15, 18, pr.WHITE)
+            desc_str = itm.get("desc", "")
+            pr.draw_text(desc_str, 115, y_pos + 38, 14, pr.LIGHTGRAY)
 
-            # Status Badge
             if is_eq:
                 stat_str, stat_c = "EQUIPPED", pr.GREEN
             elif itm["owned"]:
                 stat_str, stat_c = "OWNED", CYAN
             else:
                 stat_str, stat_c = f"{itm['cost']} SHARDS", GOLD
-
-            pr.draw_text(stat_str, 475 - pr.measure_text(stat_str, 14), y_pos + 16, 14, stat_c)
+            
+            pr.draw_text(stat_str, 490 - pr.measure_text(stat_str, 14), y_pos + 25, 14, stat_c)
 
         # 3D Turntable Showcase
-        preview_box = pr.Rectangle(530, 115, 520, 410)
+        preview_box = pr.Rectangle(560, 110, 480, 360)
         pr.draw_rectangle_rounded(preview_box, 0.1, 4, pr.Color(10, 12, 18, 255))
-        # Fixed: exactly 4 arguments
-        pr.draw_rectangle_rounded_lines(preview_box, 0.1, 4, pr.Color(40, 50, 75, 255))
-        pr.draw_text("3D LIVE INSPECTION", 550, 130, 13, pr.GRAY)
+        pr.draw_text("3D LIVE INSPECTION", 560 + 240 - pr.measure_text("3D LIVE INSPECTION", 14)//2, 125, 14, pr.DARKGRAY)
 
+        pr.begin_scissor_mode(560, 110, 480, 360)
         pr.begin_mode_3d(shop_camera)
+        
         spin_ang = pr.get_time() * 1.5
         showcase_color = SKINS[shop_cursor]["color"] if selected_tab == "SKINS" else SKINS[equipped_skin_idx]["color"]
 
@@ -426,16 +462,20 @@ while not pr.window_should_close():
         nose_off_x = math.cos(spin_ang) * 0.95
         nose_off_z = math.sin(spin_ang) * 0.95
         pr.draw_sphere(pr.Vector3(nose_off_x, 0.65, nose_off_z), 0.3, GOLD)
+        
         pr.end_mode_3d()
+        pr.end_scissor_mode()
 
-        pr.draw_text("[UP/DOWN] Select   |   [ENTER] Buy / Equip   |   [B/ESC] Return", 50, 580, 15, pr.LIGHTGRAY)
+        pr.draw_rectangle_rounded_lines(preview_box, 0.1, 4, pr.Color(40, 50, 75, 255))
+
+        pr.draw_text("[UP/DOWN] Move   |   [ENTER] Buy / Equip   |   [B/ESC] Return", 50, 580, 15, pr.LIGHTGRAY)
         pr.end_drawing()
         continue
 
     # ======================== ARENA LOOP ========================
     all_cars = [player] + ai_bots
 
-    # Fast Player Movement (Direct Force Drive)
+    # Controlled Player Movement
     is_driving = False
     if player.is_alive and player.stun_timer <= 0.0:
         dir_x, dir_z = 0.0, 0.0
@@ -444,6 +484,8 @@ while not pr.window_should_close():
         if pr.is_key_down(pr.KEY_A) or pr.is_key_down(pr.KEY_LEFT):  dir_x -= 1.0
         if pr.is_key_down(pr.KEY_D) or pr.is_key_down(pr.KEY_RIGHT): dir_x += 1.0
 
+        TARGET_SPEED = 24.0
+
         if dir_x != 0.0 or dir_z != 0.0:
             is_driving = True
             length = math.hypot(dir_x, dir_z)
@@ -451,9 +493,11 @@ while not pr.window_should_close():
             dir_z /= length
             player.angle = math.atan2(dir_z, dir_x)
 
-            TOP_SPEED = 46.0
-            player.vx = dir_x * TOP_SPEED
-            player.vz = dir_z * TOP_SPEED
+            player.vx += (dir_x * TARGET_SPEED - player.vx) * 12.0 * dt
+            player.vz += (dir_z * TARGET_SPEED - player.vz) * 12.0 * dt
+        else:
+            player.vx += (0.0 - player.vx) * 14.0 * dt
+            player.vz += (0.0 - player.vz) * 14.0 * dt
 
         if pr.is_key_pressed(pr.KEY_SPACE):
             player.trigger_ability(all_cars)
@@ -470,7 +514,6 @@ while not pr.window_should_close():
 
         dist_center = math.hypot(bot.x, bot.z)
 
-        # Edge avoidance
         if dist_center > (ARENA_RADIUS - 5.5):
             target_angle = math.atan2(-bot.z, -bot.x)
             diff = (target_angle - bot.angle + math.pi) % (2 * math.pi) - math.pi
@@ -478,9 +521,9 @@ while not pr.window_should_close():
             if abs(diff) > math.pi / 3:
                 bot.vx *= 0.88
                 bot.vz *= 0.88
-            else:
-                bot.vx = math.cos(bot.angle) * 34.0
-                bot.vz = math.sin(bot.angle) * 34.0
+            elif bot.stun_timer <= 0.0:
+                bot.vx = math.cos(bot.angle) * 20.0
+                bot.vz = math.sin(bot.angle) * 20.0
         else:
             nearest = None
             min_d = 999.0
@@ -502,10 +545,10 @@ while not pr.window_should_close():
             bot.angle += max(-5.5 * dt, min(5.5 * dt, diff * 6.0))
 
             if bot.stun_timer <= 0.0:
-                bot.vx = math.cos(bot.angle) * 30.0
-                bot.vz = math.sin(bot.angle) * 30.0
+                bot.vx = math.cos(bot.angle) * 18.0
+                bot.vz = math.sin(bot.angle) * 18.0
 
-        bot.update_physics(dt, is_driving=True)
+        bot.update_physics(dt, is_driving=(bot.stun_timer <= 0.0))
 
     # Collisions
     for i in range(len(all_cars)):
@@ -532,13 +575,23 @@ while not pr.window_should_close():
             match_shards_earned = 3
         player_shards += match_shards_earned
 
-    # Camera Shake
+    # -------------------------------------------------------------
+    # CAMERA SHAKE CALCULATION & APPLICATION
+    # -------------------------------------------------------------
     if screen_shake > 0.0:
-        screen_shake = max(0.0, screen_shake - dt * 2.2)
-    cam_shake_x = random.uniform(-screen_shake, screen_shake) * 1.4
-    cam_shake_z = random.uniform(-screen_shake, screen_shake) * 1.4
-    camera.position = pr.Vector3(cam_shake_x, 22.0, 28.0 + cam_shake_z)
-    camera.target = pr.Vector3(player.x * 0.35, 0.0, player.z * 0.35)
+        screen_shake = max(0.0, screen_shake - dt * 2.0)
+
+    # Screen-space jitter magnitude
+    shake_magnitude = screen_shake * 3.5
+    offset_x = random.uniform(-shake_magnitude, shake_magnitude)
+    offset_y = random.uniform(-shake_magnitude, shake_magnitude)
+
+    base_cam_pos = pr.Vector3(0.0, 22.0, 28.0)
+    base_target = pr.Vector3(player.x * 0.35, 0.0, player.z * 0.35)
+
+    # Apply shake to BOTH eye and target positions
+    camera.position = pr.Vector3(base_cam_pos.x + offset_x, base_cam_pos.y + offset_y, base_cam_pos.z)
+    camera.target = pr.Vector3(base_target.x + offset_x, base_target.y + offset_y, base_target.z)
 
     # ======================== RENDER 3D ========================
     pr.begin_drawing()
@@ -563,18 +616,29 @@ while not pr.window_should_close():
 
     pr.end_mode_3d()
 
-    # HUD
+    # Top-Left HUD
     pr.draw_text(f"KILLS: {match_kills}", 25, 20, 22, CYAN)
     pr.draw_text(f"ENEMIES: {enemies_left}", 25, 48, 16, pr.WHITE)
     pr.draw_text(f"SHARDS: {player_shards}", SCREEN_WIDTH - 160, 20, 22, GOLD)
 
-    # Ability Cooldown
+    # Ability Cooldown Bar
     pr.draw_text(f"ABILITY: {player.ability.upper()}", 25, 78, 15, GOLD)
     if player.ability != "Standard Engine":
         cd_ratio = max(0.0, 1.0 - (player.ability_cooldown / 4.0))
         pr.draw_rectangle(25, 100, 110, 10, pr.DARKGRAY)
         pr.draw_rectangle(25, 100, int(110 * cd_ratio), 10, CYAN if cd_ratio >= 1.0 else pr.GRAY)
         pr.draw_rectangle_lines(25, 100, 110, 10, pr.WHITE)
+
+    # Radial Speedometer HUD (Bottom-Right)
+    if player.is_alive and game_state == "PLAYING":
+        current_speed = math.hypot(player.vx, player.vz)
+        draw_speedometer(
+            cx=SCREEN_WIDTH - 90,
+            cy=SCREEN_HEIGHT - 90,
+            radius=55,
+            current_speed=current_speed,
+            max_displayed_speed=40.0
+        )
 
     # Game Over Screen
     if game_state == "GAMEOVER":
@@ -589,7 +653,6 @@ while not pr.window_should_close():
         pr.draw_rectangle_rounded(pr.Rectangle(SCREEN_WIDTH // 2 - 130, 350, 260, 42), 0.25, 4, CYAN)
         pr.draw_text("PLAY AGAIN [ENTER]", SCREEN_WIDTH // 2 - pr.measure_text("PLAY AGAIN [ENTER]", 16) // 2, 363, 16, pr.BLACK)
 
-        # Fixed: exactly 4 arguments
         pr.draw_rectangle_rounded_lines(pr.Rectangle(SCREEN_WIDTH // 2 - 130, 405, 260, 42), 0.25, 4, pr.WHITE)
         pr.draw_text("GARAGE [S]", SCREEN_WIDTH // 2 - pr.measure_text("GARAGE [S]", 16) // 2, 418, 16, pr.WHITE)
 
